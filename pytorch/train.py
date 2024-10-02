@@ -12,20 +12,7 @@ import OpenImageIO as oiio
 
 from pprint import pprint
 
-def find_folders_with_images(path, ext_list=['.exr']):
-    directories_with_imgs = set()
-    # Walk through all directories and files in the given path
-    for root, dirs, files in os.walk(path):
-        # exclude certain folders
-        if 'preview' in root:
-            continue
-        if 'eval' in root:
-            continue
-        for file in files:
-            if any(file.lower().endswith(ext) for ext in ext_list):
-                directories_with_imgs.add(root)
-                break  # No need to check other files in the same directory
-    return directories_with_imgs
+
 
 class MLDataset(torch.utils.data.Dataset):
     def __init__(   
@@ -39,8 +26,28 @@ class MLDataset(torch.utils.data.Dataset):
         self.dataset_path = dataset_path
         self.generalize = generalize
         print (f'scanning for exr files in {self.dataset_path}...')
-        self.folders_with_imgs = find_folders_with_images(self.dataset_path)
-        print (f'found {len(self.folders_with_imgs)} clip folders.')
+        self.imgs = self.find_images(self.dataset_path)
+        print (f'found {len(self.imgs)} images.')
+
+    def find_images(self, path, ext_list=['.exr']):
+        imgs = set()
+        # Walk through all directories and files in the given path
+        for root, dirs, files in os.walk(path):
+            # exclude certain folders
+            for file in files:
+                if any(file.lower().endswith(ext) for ext in ext_list):
+                    imgs.add(os.path.join(
+                        os.path.abspath(root),
+                        file
+                        ))
+        return list(imgs)
+
+    def __len__(self):
+        return len(self.imgs)
+
+    def __getitem__(self, index):
+        return self.imgs[index]
+
 
 def main():
     parser = argparse.ArgumentParser(description='Training script.')
@@ -53,10 +60,18 @@ def main():
     device = torch.device("mps") if platform.system() == 'Darwin' else torch.device(f'cuda')
 
     training_dataset = MLDataset(
-        os.path.join(args.dataset_path, 'train'), 
+        os.path.join(args.dataset_path, 'train'),
         device=device, 
         )
     
+    validation_dataset = MLDataset(
+        os.path.join(args.dataset_path, 'validate'),
+        device=device, 
+        )
+    
+    print (len(validation_dataset))
+    for s in validation_dataset:
+        print (s)
 
 if __name__ == "__main__":
     main()
