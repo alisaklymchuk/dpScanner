@@ -24,6 +24,8 @@ class MLDataset(torch.utils.data.Dataset):
         ):
 
         self.dataset_path = dataset_path
+        self.device = device
+        self.frame_size = frame_size
         self.generalize = generalize
         print (f'scanning for exr files in {self.dataset_path}...')
         self.imgs = self.find_images(self.dataset_path)
@@ -42,12 +44,56 @@ class MLDataset(torch.utils.data.Dataset):
                         ))
         return list(imgs)
 
+    def read_image_file(self, file_path):
+        inp = oiio.ImageInput.open(file_path)
+        if inp:
+            spec = inp.spec()
+            # height = spec.height
+            # width = spec.width
+            channels = spec.nchannels
+            result = inp.read_image(0, 0, 0, channels)
+            inp.close()
+        return result
+    
+    def crop(self, img, h, w):
+        try:
+            np.random.seed(None)
+            ih, iw, _ = img.shape
+            x = np.random.randint(0, ih - h + 1)
+            y = np.random.randint(0, iw - w + 1)
+            img = img[x:x+h, y:y+w, :]
+        except:
+            print (f'Cannot crop: h: {h}, w: {w}, img shape: {img.shape}')
+        return img
+
     def __len__(self):
         return len(self.imgs)
 
     def __getitem__(self, index):
-        return self.imgs[index]
+        img = self.read_image_file(self.imgs[index])
+        img = self.crop(img, self.frame_size, self.frame_size)
 
+        # Horizontal flip (reverse width)
+        if random.uniform(0, 1) < (self.generalize / 100):
+            if random.uniform(0, 1) < 0.5:
+                img = np.flip(img, axis=1)
+
+        # Vertical flip (reverse height)
+        if random.uniform(0, 1) < (self.generalize / 100):
+            if random.uniform(0, 1) < 0.5:
+                img = np.flip(img, axis=0)
+
+        # Rotation
+        if random.uniform(0, 1) < (self.generalize / 100):
+            p = random.uniform(0, 1)
+            if p < 0.25:
+                img = np.rot90(img, k=-1, axes=(0, 1))
+            elif p < 0.5:
+                img = np.rot90(img, k=1, axes=(0, 1))
+            elif p < 0.75:
+                img = np.rot90(img, k=2, axes=(0, 1))
+
+        return img
 
 def main():
     parser = argparse.ArgumentParser(description='Training script.')
@@ -69,9 +115,8 @@ def main():
         device=device, 
         )
     
-    print (len(validation_dataset))
-    for s in validation_dataset:
-        print (s)
+    for img in training_dataset:
+        print (f'shape: {img.shape}')
 
 if __name__ == "__main__":
     main()
