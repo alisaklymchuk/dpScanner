@@ -6,6 +6,7 @@ test_*
 env
 appenv
 dataset
+preview
 .DS_Store
 *.pth
 *.pkl
