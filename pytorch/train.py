@@ -11,6 +11,7 @@ import torch
 import OpenImageIO as oiio
 
 from pprint import pprint
+from model import myNet
 
 class MLDataset(torch.utils.data.Dataset):
     def __init__(   
@@ -81,8 +82,9 @@ def write_image_file(file_path, image_data, image_spec):
         out.write_image(image_data)
         out.close ()
 
-def augment(img):
+def augment(img): 
     generalize = 100
+
     # Horizontal flip (reverse width)
     if random.uniform(0, 1) < (generalize / 100):
         if random.uniform(0, 1) < 0.5:
@@ -103,17 +105,7 @@ def augment(img):
         elif p < 0.75:
             img = np.rot90(img, k=2, axes=(0, 1))
 
-    return img
-
-class myNet(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-        pass
-    
-    def forward(self, x):
-        n, c, h, w = x.shape
-        tensor = torch.full((n, 1, h, w), 0.5)
-        return tensor
+    return np.ascontiguousarray(img)
 
 def main():
     parser = argparse.ArgumentParser(description='Training script.')
@@ -153,21 +145,24 @@ def main():
 
             first_index = step*args.batch_size
             last_index = min(len(training_dataset)-1, (step+1)*args.batch_size)
-            # batch_list = [augment(training_dataset[x]) for x in range(first_index, last_index)]
-            batch_list = [training_dataset[x] for x in range(first_index, last_index)]
+            batch_list = [augment(training_dataset[x]) for x in range(first_index, last_index)]
+            # batch_list = [training_dataset[x] for x in range(first_index, last_index)]
+
             if not batch_list:
                 continue
             tensor_list = [torch.from_numpy(array).permute(2, 1, 0) for array in batch_list]
+            
+
             batch_tensor = torch.stack(tensor_list)
-            batch_tensor.to(device=device, dtype=torch.float32)
+            batch_tensor = batch_tensor.to(device=device, dtype=torch.float32)
 
             data_time += time.time() - time_stamp
             data_time_str = str(f'{data_time:.2f}')
             time_stamp = time.time()
 
             # train here
-            
-            mask = net(batch_tensor)
+
+            mask = net(batch_tensor[:,:3,:,:])
             
             if platform.system() == 'Darwin':
                 torch.mps.synchronize()
@@ -221,8 +216,6 @@ def main():
             print (f'\rEpoch [{epoch + 1} - {days:02}d {hours:02}:{minutes:02}], Time:{data_time_str} + {train_time_str}, [Step: {step+1} / {steps_per_epoch}], Lr: {current_lr_str}, Loss: {loss_str}', end='')         
 
         training_dataset.reshuffle()
-
-
 
 
 if __name__ == "__main__":
